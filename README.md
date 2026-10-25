@@ -4,7 +4,7 @@ A self-contained, browser-based Hindi articulation and voice practice studio. It
 
 ## GitHub Codespaces
 
-Open the repository in a Codespace. The checked-in `.devcontainer` configuration runs the test suite during setup, starts the static app when the container starts, and forwards port **4173** with the browser preview opened automatically. No `npm install` step is needed. To restart it manually, use `npm run dev`.
+Open the repository in a Codespace. The checked-in `.devcontainer` configuration runs the test suite during setup, starts the Node static server on container start and attach, and forwards port **4173** to the browser preview. No `npm install` is needed. If you added this configuration to an already-created Codespace, run **Codespaces: Rebuild Container** once; lifecycle hooks take effect after the rebuild. To restart manually, use `npm run dev`.
 
 ## What’s included
 

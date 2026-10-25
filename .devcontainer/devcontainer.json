@@ -5,12 +5,13 @@
   "portsAttributes": {
     "4173": {
       "label": "VoiceSadhana",
-      "onAutoForward": "openBrowser",
+      "onAutoForward": "openPreview",
       "visibility": "private"
     }
   },
   "postCreateCommand": "npm test",
   "postStartCommand": "bash .devcontainer/start-app.sh",
+  "postAttachCommand": "bash .devcontainer/start-app.sh",
   "customizations": {
     "vscode": {
       "extensions": ["dbaeumer.vscode-eslint"]
