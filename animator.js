@@ -1,56 +1,139 @@
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const REST={tip:[.55,.62],body:[.58,.58],velum:'raised',lips:'neutral',jaw:.16,rotation:0,voiced:false,aspirated:false,nasal:false};
-export class AnatomyAnimator{
-  constructor(canvas){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.target={...REST};this.current={...REST,tip:[...REST.tip],body:[...REST.body]};this.from={...this.current};this.start=performance.now();this.duration=620;this.time=0;this.last=0;this.raf=0;this.particles=[];this.emissionClock=0;this.emissionStep=0;this.lowPerf=0;this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;this.mirror=false;this.active=false;this.nasalLeak=false;this.ghost=null;this.estimate=null;this.resizeObserver=typeof ResizeObserver!=='undefined'?new ResizeObserver(()=>this.resize()):null;this.resizeObserver?.observe(canvas);this.resize();this.loop=this.loop.bind(this);this.raf=requestAnimationFrame(this.loop);}
-  resize(){const rect=this.canvas.getBoundingClientRect();if(!rect.width)return;const ratio=Math.min(globalThis.devicePixelRatio||1,2);this.canvas.width=rect.width*ratio;this.canvas.height=rect.height*ratio;this.ctx.setTransform(ratio,0,0,ratio,0,0);this.w=rect.width;this.h=rect.height;}
-  setTarget(target={},duration=650){this.ghost={tip:[...this.current.tip],body:[...this.current.body],start:performance.now()};this.from={...this.current,tip:[...this.current.tip],body:[...this.current.body]};this.target={...REST,...target,tip:target.tip||this.current.tip,body:target.body||this.current.body};this.start=performance.now();this.duration=this.reduced?0:duration;this.time=0;this.active=!!target.voiced;if(target.aspirated)this.burst();}
-  setMirror(value){this.mirror=value;}
-  setNasalLeak(value){this.nasalLeak=!!value;}
-  setEstimate(formants){if(!formants){this.estimate=null;return;}const front=formants.frontness??.5,height=formants.height??.5;this.estimate={tip:[.51+(1-front)*.07,.55-height*.13],body:[.63-front*.13,.59-height*.18]};}
-  burst(){const count=this.lowPerf?5:14;for(let i=0;i<count;i++){const offset=(i%5)-2;this.particles.push({x:.885,y:.49+offset*.015,vx:.34+(i%4)*.07,vy:((i%3)-1)*.09,life:.48+(i%4)*.04,age:(i%5)*.018,color:'#f1ad62'});}}
-  loop(now){const dt=this.last?Math.min((now-this.last)/1000,.05):0;this.last=now;this.time+=dt;const t=this.duration?clamp((now-this.start)/this.duration,0,1):1;const eased=1-Math.pow(1-t,3);const bounce=t<1?eased+Math.sin(t*Math.PI)*.035:1;
-    const mix=(a,b)=>a+(b-a)*bounce;this.current.tip=this.from.tip.map((v,i)=>mix(v,this.target.tip[i]));this.current.body=this.from.body.map((v,i)=>mix(v,this.target.body[i]));this.current.jaw=mix(this.from.jaw||.15,this.target.jaw||.15);this.current.rotation=mix(this.from.rotation||0,this.target.rotation||0);this.current.velum=t<1?(this.from.velum||'raised'):this.target.velum;this.current.lips=t<1?(this.from.lips||'neutral'):this.target.lips;this.current.voiced=this.target.voiced;this.current.aspirated=this.target.aspirated;this.current.nasal=this.target.nasal;
-    if(!this.reduced&&this.lowPerf<90){this.emissionClock+=dt;if(this.emissionClock>=.18){this.emissionClock-=.18;const n=this.emissionStep++%5;this.particles.push({x:.33,y:.72+(n-2)*.009,vx:.27+(n%3)*.025,vy:-.012+(n-2)*.008,life:1.6,age:0,route:this.current.nasal||this.nasalLeak,color:this.nasalLeak?'#eda452':this.current.nasal?'#65bd91':'#79bbd0'});}}
-    this.particles=this.particles.filter(p=>{p.age+=dt;p.x+=p.vx*dt;p.y+=(p.route&&p.x>.54?-.18:p.vy)*dt;return p.age<p.life&&p.x<.91&&p.y>0;});this.draw(now);
-    const frame=now-(this.prev||now);this.prev=now;if(frame>20)this.lowPerf++;else this.lowPerf=Math.max(0,this.lowPerf-1);if(this.lowPerf>90)this.lowPerf=120;
-    this.raf=requestAnimationFrame(this.loop);
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const REST = { tip: [.55, .62], body: [.58, .58], velum: 'raised', lips: 'neutral', jaw: .16, rotation: 0, voiced: false, aspirated: false, nasal: false };
+
+function copyPose(pose) {
+  return { ...pose, tip: [...pose.tip], body: [...pose.body] };
+}
+
+export class AnatomyAnimator {
+  constructor(scene) {
+    this.scene = scene;
+    this.tongue = scene.querySelector('.anatomy-tongue');
+    this.tongueShadow = scene.querySelector('.tongue-shadow');
+    this.tongueHighlight = scene.querySelector('.tongue-highlight');
+    this.tipMarker = scene.querySelector('.tongue-tip');
+    this.estimateMarker = scene.querySelector('.estimated-tongue');
+    this.current = copyPose(REST);
+    this.from = copyPose(REST);
+    this.target = copyPose(REST);
+    this.start = performance.now();
+    this.duration = 0;
+    this.sequence = null;
+    this.sequenceStart = this.start;
+    this.sequenceIndex = -1;
+    this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.mirror = false;
+    this.nasalLeak = false;
+    this.estimate = null;
+    this.destroyed = false;
+    this.loop = this.loop.bind(this);
+    this.raf = requestAnimationFrame(this.loop);
+    this.render(this.start);
   }
-  draw(now){const c=this.ctx,w=this.w,h=this.h;if(!w||!h)return;c.clearRect(0,0,w,h);c.save();if(this.mirror){c.translate(w,0);c.scale(-1,1);}const X=x=>x*w,Y=y=>y*h;
-    // soft backdrop
-    const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#f1f8f6');grad.addColorStop(1,'#fbf7ef');c.fillStyle=grad;c.fillRect(0,0,w,h);
-    // head and neck profile
-    c.fillStyle='#f0d9c2';c.strokeStyle='#b79d87';c.lineWidth=2;c.beginPath();c.moveTo(X(.27),Y(.84));c.bezierCurveTo(X(.25),Y(.72),X(.22),Y(.62),X(.245),Y(.49));c.bezierCurveTo(X(.26),Y(.39),X(.33),Y(.28),X(.48),Y(.24));c.bezierCurveTo(X(.60),Y(.20),X(.72),Y(.25),X(.76),Y(.35));c.bezierCurveTo(X(.80),Y(.40),X(.87),Y(.40),X(.90),Y(.45));c.lineTo(X(.86),Y(.48));c.lineTo(X(.91),Y(.50));c.quadraticCurveTo(X(.88),Y(.53),X(.84),Y(.54));c.bezierCurveTo(X(.83),Y(.63),X(.80),Y(.69),X(.74),Y(.72));c.lineTo(X(.74),Y(.88));c.closePath();c.fill();c.stroke();
-    // Delicate human-profile details make this read as anatomy, not a floating cartoon face.
-    c.strokeStyle='#6a5148';c.lineWidth=3.2;c.lineCap='round';c.beginPath();c.moveTo(X(.34),Y(.34));c.quadraticCurveTo(X(.48),Y(.225),X(.62),Y(.255));c.quadraticCurveTo(X(.70),Y(.267),X(.75),Y(.315));c.stroke();
-    c.strokeStyle='#987e6c';c.lineWidth=1.6;c.beginPath();c.ellipse(X(.48),Y(.432),w*.018,h*.035,0,0,Math.PI*2);c.stroke();c.beginPath();c.moveTo(X(.485),Y(.416));c.quadraticCurveTo(X(.465),Y(.44),X(.49),Y(.452));c.stroke();
-    c.strokeStyle='#604d45';c.lineWidth=2;c.beginPath();c.moveTo(X(.69),Y(.348));c.quadraticCurveTo(X(.72),Y(.337),X(.745),Y(.35));c.stroke();c.fillStyle='#34414a';c.beginPath();c.ellipse(X(.719),Y(.365),w*.005,h*.009,0,0,Math.PI*2);c.fill();
-    // oral cavity
-    c.fillStyle='#fffaf1';c.strokeStyle='#cfbda9';c.lineWidth=1.5;c.beginPath();c.moveTo(X(.37),Y(.46));c.quadraticCurveTo(X(.53),Y(.39),X(.71),Y(.43));c.quadraticCurveTo(X(.81),Y(.45),X(.85),Y(.49));c.quadraticCurveTo(X(.79),Y(.55),X(.68),Y(.57));c.quadraticCurveTo(X(.53),Y(.58),X(.40),Y(.55));c.closePath();c.fill();c.stroke();
-    // nasal cavity
-    c.fillStyle='#eff8f7';c.strokeStyle='#aec8c2';c.beginPath();c.moveTo(X(.42),Y(.41));c.quadraticCurveTo(X(.46),Y(.30),X(.59),Y(.31));c.quadraticCurveTo(X(.72),Y(.31),X(.79),Y(.40));c.lineTo(X(.71),Y(.43));c.quadraticCurveTo(X(.55),Y(.39),X(.42),Y(.43));c.closePath();c.fill();c.stroke();
-    // cavity labels
-    c.fillStyle='#a1b0b0';c.font=`${Math.max(9,w*.022)}px DM Sans`;c.fillText('NASAL CAVITY',X(.49),Y(.355));c.fillText('ORAL CAVITY',X(.50),Y(.525));
-    // velum hinge and flap
-    const velumLower=this.current.velum==='lowered'||this.current.nasal||this.nasalLeak;const vx=X(.68),vy=Y(.415);c.save();c.translate(vx,vy);c.rotate(velumLower?.52:-.13);c.strokeStyle=this.nasalLeak?'#df6862':this.current.nasal?'#58aa81':velumLower?'#e7a054':'#64b88f';c.lineWidth=5;c.lineCap='round';c.shadowColor=this.nasalLeak?'#df6862':this.current.nasal?'#58aa81':velumLower?'#e6a14b':'#65bf96';c.shadowBlur=this.lowPerf>40?0:velumLower?8:12;c.beginPath();c.moveTo(0,0);c.quadraticCurveTo(X(-.02),Y(.025),X(-.12),Y(.027));c.stroke();c.restore();c.fillStyle='#66b68c';c.beginPath();c.arc(vx,vy,3,0,Math.PI*2);c.fill();
-    // A fading trail marks the tongue's previous position during transitions.
-    if(this.ghost){const age=now-this.ghost.start;if(age<400&&!this.reduced){c.save();c.globalAlpha=.3*(1-age/400);c.strokeStyle='#e5a45c';c.lineWidth=6;c.lineCap='round';c.setLineDash([3,5]);c.beginPath();c.moveTo(X(this.ghost.tip[0]),Y(this.ghost.tip[1]));c.quadraticCurveTo(X(.70),Y(.42),X(this.current.tip[0]),Y(this.current.tip[1]));c.stroke();c.restore();}else if(age>=400)this.ghost=null;}
-    // tongue body as controllable curve
-    const idle=!this.active&&!this.reduced?Math.sin(now*Math.PI/1000)*.002:0;const tip=[this.current.tip[0],this.current.tip[1]+idle],body=this.current.body;const tongueTip=[X(tip[0]),Y(tip[1])],bodyPt=[X(body[0]),Y(body[1])];c.fillStyle='#dc887c';c.strokeStyle='#bb675f';c.lineWidth=1.5;c.beginPath();c.moveTo(X(.36),Y(.61));c.bezierCurveTo(X(.42),Y(.56),bodyPt[0]-X(.08),bodyPt[1]+Y(.055),bodyPt[0],bodyPt[1]);c.quadraticCurveTo(bodyPt[0]+X(.07),bodyPt[1]-Y(.025),tongueTip[0],tongueTip[1]);c.quadraticCurveTo(X(.86),Y(.52),X(.83),Y(.55));c.quadraticCurveTo(X(.65),Y(.66),X(.45),Y(.66));c.closePath();c.fill();c.stroke();
-    if(this.estimate){const eTip=[X(this.estimate.tip[0]),Y(this.estimate.tip[1])],eBody=[X(this.estimate.body[0]),Y(this.estimate.body[1])],distance=Math.hypot(this.estimate.body[0]-this.current.body[0],this.estimate.body[1]-this.current.body[1]),close=distance<.09;c.save();c.globalAlpha=.58;c.strokeStyle=close?'#48a978':'#d86b65';c.lineWidth=3;c.setLineDash([4,3]);c.beginPath();c.moveTo(X(.39),Y(.62));c.quadraticCurveTo(eBody[0],eBody[1],eTip[0],eTip[1]);c.stroke();c.restore();}
-    // jaw and teeth
-    c.strokeStyle='#b99f89';c.lineWidth=3;c.beginPath();c.moveTo(X(.40),Y(.55));c.quadraticCurveTo(X(.48),Y(.67+this.current.jaw*.12),X(.70),Y(.64+this.current.jaw*.1));c.stroke();c.fillStyle='#fff';for(let i=0;i<4;i++){c.fillRect(X(.745+i*.012),Y(.458+i*.004),w*.012,h*.018);}
-    // lips articulate independently: closure for bilabials, compression for rounded vowels.
-    const closed=this.current.lips==='closed',rounded=this.current.lips==='rounded',lipStart=rounded?.855:.84,lipEnd=rounded?.89:.9,upper=closed?.5:rounded?.485:.48,lower=closed?.5:rounded?.515:.51;c.strokeStyle=closed?'#c06e68':'#b96e68';c.lineWidth=closed?4:rounded?3:2.5;c.beginPath();c.moveTo(X(lipStart),Y(upper));c.quadraticCurveTo(X((lipStart+lipEnd)/2),Y(upper-.005),X(lipEnd),Y(closed?.5:rounded?.495:.49));c.stroke();c.beginPath();c.moveTo(X(lipStart),Y(lower));c.quadraticCurveTo(X((lipStart+lipEnd)/2),Y(lower+.005),X(lipEnd),Y(closed?.5:rounded?.505:.50));c.stroke();
-    // larynx, trachea, vocal folds
-    c.strokeStyle='#b7aaa0';c.lineWidth=7;c.lineCap='round';c.beginPath();c.moveTo(X(.43),Y(.66));c.lineTo(X(.42),Y(.86));c.stroke();const vibration=this.current.voiced?Math.sin(now/22)*2:0;c.strokeStyle=this.current.voiced?'#e7a456':'#9a8a7e';c.lineWidth=2;c.beginPath();c.moveTo(X(.405),Y(.69)+vibration);c.lineTo(X(.432),Y(.69)-vibration);c.moveTo(X(.405),Y(.7)-vibration);c.lineTo(X(.432),Y(.7)+vibration);c.stroke();
-    // hyoid / chest breath motion
-    c.strokeStyle='#a9b8ae';c.lineWidth=1.5;c.beginPath();c.moveTo(X(.28),Y(.78));c.quadraticCurveTo(X(.33),Y(.74+Math.sin(now/2100)*.008),X(.39),Y(.78));c.stroke();
-    // airflow path & particles
-    c.setLineDash([4,5]);c.strokeStyle=this.nasalLeak?'#df6862':this.current.nasal?'#75b99a':'#79b8ca';c.globalAlpha=.42;c.lineWidth=2;c.beginPath();c.moveTo(X(.44),Y(.69));if(this.current.nasal||this.nasalLeak){c.quadraticCurveTo(X(.61),Y(.55),X(.67),Y(.42));c.quadraticCurveTo(X(.69),Y(.33),X(.75),Y(.37));}else c.quadraticCurveTo(X(.68),Y(.58),X(.87),Y(.5));c.stroke();c.setLineDash([]);c.globalAlpha=1;
-    for(const p of this.particles){const alpha=clamp(1-p.age/p.life,0,1);c.globalAlpha=alpha*.72;c.fillStyle=p.color;c.beginPath();c.arc(X(p.x),Y(p.y),Math.max(1.5,w*.005*(1-p.age/p.life)),0,Math.PI*2);c.fill();}c.globalAlpha=1;
-    if(this.current.voiced){c.strokeStyle='#e5aa61';c.globalAlpha=.55;c.lineWidth=1.4;for(let r=0;r<2;r++){const radius=(now/90+r*20)%38;c.beginPath();c.arc(X(.42),Y(.7),radius,Math.PI*.75,Math.PI*1.25);c.stroke();}c.globalAlpha=1;}
-    // reference labels with leader lines
-    c.fillStyle='#718294';c.font=`${Math.max(9,w*.022)}px DM Sans`;c.fillText('VELUM',X(.72),Y(.30));c.fillText('TONGUE',X(.40),Y(.73));c.fillText('LARYNX',X(.34),Y(.91));
-    c.restore();}
-  destroy(){cancelAnimationFrame(this.raf);this.resizeObserver?.disconnect();this.particles=[];}
+
+  setTarget(pose = {}, duration = 650) {
+    this.from = copyPose(this.current);
+    this.target = {
+      ...REST,
+      ...pose,
+      tip: pose.tip ? [...pose.tip] : [...this.current.tip],
+      body: pose.body ? [...pose.body] : [...this.current.body],
+    };
+    this.start = performance.now();
+    this.duration = this.reduced ? 0 : Math.max(0, duration);
+    if (this.target.aspirated) this.scene.classList.add('is-aspirated');
+  }
+
+  setSequence(sequence, duration = 30_000) {
+    this.sequence = !this.reduced && Array.isArray(sequence) && sequence.length ? sequence : null;
+    this.sequenceDuration = duration;
+    this.sequenceStart = performance.now();
+    this.sequenceIndex = -1;
+  }
+
+  setMirror(value) {
+    this.mirror = !!value;
+    this.scene.classList.toggle('is-mirrored', this.mirror);
+  }
+
+  setNasalLeak(value) {
+    this.nasalLeak = !!value;
+    this.scene.classList.toggle('nasal-leak', this.nasalLeak);
+  }
+
+  setEstimate(formants) {
+    if (!formants) {
+      this.estimate = null;
+      this.scene.classList.remove('has-estimate');
+      return;
+    }
+    const front = formants.frontness ?? .5;
+    const height = formants.height ?? .5;
+    this.estimate = {
+      tip: [.51 + (1 - front) * .07, .55 - height * .13],
+      body: [.63 - front * .13, .59 - height * .18],
+    };
+    this.scene.classList.add('has-estimate');
+  }
+
+  loop(now) {
+    if (this.destroyed) return;
+    if (this.sequence) {
+      const progress = ((now - this.sequenceStart) % this.sequenceDuration) / this.sequenceDuration;
+      const index = Math.min(this.sequence.length - 1, Math.floor(progress * this.sequence.length));
+      if (index !== this.sequenceIndex) {
+        this.sequenceIndex = index;
+        const cue = this.scene.closest('.coach-loop')?.querySelector('#coach-cue');
+        if (cue && this.sequence[index].label) cue.textContent = this.sequence[index].label;
+        this.setTarget(this.sequence[index].pose, this.reduced ? 0 : 900);
+      }
+    }
+
+    const t = this.duration ? clamp((now - this.start) / this.duration, 0, 1) : 1;
+    const eased = 1 - Math.pow(1 - t, 3);
+    const mix = (a, b) => a + (b - a) * eased;
+    this.current.tip = this.from.tip.map((value, index) => mix(value, this.target.tip[index]));
+    this.current.body = this.from.body.map((value, index) => mix(value, this.target.body[index]));
+    this.current.jaw = mix(this.from.jaw ?? REST.jaw, this.target.jaw ?? REST.jaw);
+    this.current.velum = t < 1 ? this.from.velum : this.target.velum;
+    this.current.lips = t < 1 ? this.from.lips : this.target.lips;
+    this.current.voiced = this.target.voiced;
+    this.current.aspirated = this.target.aspirated;
+    this.current.nasal = this.target.nasal;
+    this.render(now);
+    this.raf = requestAnimationFrame(this.loop);
+  }
+
+  tonguePath(pose) {
+    const tipX = 846 + (pose.tip[0] - .55) * 250;
+    const tipY = 510 + (pose.tip[1] - .62) * 210;
+    const bodyX = 754 + (pose.body[0] - .58) * 180;
+    const bodyY = 548 + (pose.body[1] - .58) * 190;
+    return `M 690 568 C 706 544, ${bodyX - 30} ${bodyY - 10}, ${bodyX} ${bodyY} C ${bodyX + 42} ${bodyY - 46}, ${tipX - 32} ${tipY + 16}, ${tipX} ${tipY} Q ${tipX + 20} ${tipY + 8}, 852 540 C 826 577, 783 599, 741 595 Q 705 590, 690 568 Z`;
+  }
+
+  render(now) {
+    const path = this.tonguePath(this.current);
+    this.tongue?.setAttribute('d', path);
+    this.tongueShadow?.setAttribute('d', path);
+    this.tongueHighlight?.setAttribute('d', `M 713 570 Q ${760 + (this.current.body[0] - .58) * 100} ${548 + (this.current.body[1] - .58) * 80}, ${846 + (this.current.tip[0] - .55) * 220} ${514 + (this.current.tip[1] - .5) * 220}`);
+    if (this.tipMarker) {
+      this.tipMarker.setAttribute('cx', String(846 + (this.current.tip[0] - .55) * 250));
+      this.tipMarker.setAttribute('cy', String(512 + (this.current.tip[1] - .5) * 260));
+    }
+    if (this.estimateMarker && this.estimate) this.estimateMarker.setAttribute('d', this.tonguePath(this.estimate));
+    this.scene.dataset.airflow = this.nasalLeak ? 'leak' : this.current.nasal ? 'nasal' : 'oral';
+    const guide = this.scene.closest('.coach-loop')?.querySelector('#guide-progress');
+    if (guide && this.sequence) guide.style.width = `${((now - this.sequenceStart) % this.sequenceDuration) / this.sequenceDuration * 100}%`;
+    this.scene.dataset.velum = this.nasalLeak ? 'leak' : this.current.velum;
+    this.scene.dataset.lips = this.current.lips;
+    this.scene.dataset.voiced = String(!!this.current.voiced);
+    this.scene.classList.toggle('is-aspirated', !!this.current.aspirated && now - this.start < 700);
+  }
+
+  destroy() {
+    this.destroyed = true;
+    cancelAnimationFrame(this.raf);
+    this.sequence = null;
+  }
 }
