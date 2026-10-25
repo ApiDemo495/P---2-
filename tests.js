@@ -16,15 +16,18 @@ console.log(`Passed ${samples.length} Hindi word decomposition cases and transli
 
 globalThis.matchMedia=()=>({matches:false});
 const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
-const {defaults,recordArticulation,recordVoice,syncDay,reconcileStreak,localDate}=await import('./gamification.js');
+const {defaults,recordArticulation,recordVoice,syncDay,reconcileStreak,localDate,getMonthCalendar}=await import('./gamification.js');
 const state=defaults();
 recordArticulation(state,'कमल',decomposeWord('कमल'),false);
+assert.equal(state.streakData.calendar[localDate()],'partial','practice appears in today’s calendar before the full goal is met');
 assert.equal(state.progressData.articulationToday,false,'articulation needs a self-report');
 state.progressData.articulationToday=true;recordVoice(state,'breathing');
 assert.equal(syncDay(state),true,'both categories complete the daily goal');
 assert.equal(state.streakData.current,1);
+assert.equal(state.streakData.calendar[localDate()],'complete','both daily goal steps mark a complete calendar day');
 assert.equal(syncDay(state),false,'same-day completion is not counted twice');
 assert.equal(state.streakData.current,1);
 const recovery=defaults(),today=new Date(),last=new Date();last.setDate(today.getDate()-3);recovery.streakData={...recovery.streakData,current:5,best:5,freezeTokens:2,lastCompletedDate:(()=>{const d=new Date(last.getTime()-last.getTimezoneOffset()*60000);return d.toISOString().slice(0,10)})(),calendar:{}};recovery.progressData.articulationToday=true;recovery.progressData.voiceToday=true;reconcileStreak(recovery);assert.equal(Object.values(recovery.streakData.calendar).filter(x=>x==='rest').length,2,'rest tokens auto-apply while the app opens');assert.equal(syncDay(recovery),true);assert.equal(recovery.streakData.current,6,'two freezes bridge two missed local calendar days');assert.equal(recovery.streakData.freezeTokens,0);assert.equal(Object.values(recovery.streakData.calendar).filter(x=>x==='rest').length,2);
 process.env.TZ='America/New_York';const springBefore=new Date(2026,2,8,1,59),springAfter=new Date(springBefore.getTime()+2*60*1000);assert.equal(localDate(springBefore),localDate(springAfter),'spring-forward keeps the local calendar date stable');const dstRecovery=defaults();dstRecovery.streakData={...dstRecovery.streakData,current:6,best:6,freezeTokens:1,lastCompletedDate:'2026-03-07',calendar:{}};dstRecovery.progressData.articulationToday=true;dstRecovery.progressData.voiceToday=true;assert.equal(syncDay(dstRecovery,new Date(2026,2,9,12)),true,'streak recovery crosses spring-forward by calendar days');assert.equal(dstRecovery.streakData.current,7);assert.equal(dstRecovery.streakData.calendar['2026-03-08'],'rest');
-console.log('Passed daily goal, self-report gating, duplicate completion, multi-day freeze recovery, and DST/local-date checks.');
+const monthState=defaults();monthState.practiceHistory=[{date:'2026-03-08',type:'articulation'}];monthState.streakData.calendar={'2026-03-08':'complete','2026-03-09':'partial','2026-03-10':'rest'};const march=getMonthCalendar(monthState,0,new Date(2026,2,15,12));assert.equal(march.monthLabel,'March 2026');assert.equal(march.weekdays[0],'Mon','calendar weeks begin on Monday');assert.ok(march.cells.slice(0,6).every(cell=>cell.empty),'month starts in the correct weekday column');assert.equal(march.cells.find(cell=>cell.date==='2026-03-08').status,'complete');assert.equal(march.cells.find(cell=>cell.date==='2026-03-09').status,'partial');assert.equal(march.cells.find(cell=>cell.date==='2026-03-10').status,'rest');assert.equal(getMonthCalendar(monthState,-1,new Date(2026,2,15,12)).monthLabel,'February 2026','month navigation handles year boundaries');
+console.log('Passed daily goal, self-report gating, calendar completion, partial-day visibility, rest-token recovery, month navigation and DST/local-date checks.');

@@ -9,10 +9,10 @@ Open the repository in a Codespace. The checked-in `.devcontainer` configuration
 ## What’s included
 
 - Hindi Devanagari phoneme reference data, matra/modifier decomposition, conjunct handling, and lightweight Hinglish transliteration.
-- Animated Canvas sagittal mouth illustration, playback controls, slow/natural timing, mirror view, airflow and aspirated release cues.
+- Deterministic, human-profile Canvas anatomy with articulator transitions, plus a polished SVG movement guide that loops smoothly every 30 seconds (no random motion or GIF dependency).
 - Optional in-browser microphone meter for approximate pitch and spectral feedback. Audio is not recorded or uploaded.
 - Guided breathing, yawn–sigh, humming, siren, straw-style, vowel, reading, and relaxation practices.
-- Local practice history, daily articulation + voice goal with self-report, streak/calendar, rest tokens, XP, progression, settings, and JSON export.
+- Local practice history, daily articulation + voice goal, partial-day tracking, Monday-start month calendar, honest consecutive-goal streaks, rest tokens, XP, progression, settings, and JSON export.
 - Onboarding, responsive navigation, dark theme, adjustable text, and reduced-motion support.
 
 ## Test
