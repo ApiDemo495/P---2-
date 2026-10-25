@@ -1,0 +1,4 @@
+node_modules/
+.vscode/.ropeproject
+*.log
+.DS_Store
