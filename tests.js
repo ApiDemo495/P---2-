@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import {readFileSync,statSync} from 'node:fs';
+import {join} from 'node:path';
 import {decomposeWord,transliterateLatin} from './phonemeData.js';
 
 const samples=['कमल','पानी','नमस्ते','क्षमा','श्रद्धा','त्रिकोण','ज्ञान','आम','खग','घड़ी','छाता','झरना','टमाटर','ढोल','ण','थाली','दादी','पुस्तक','वायु','संस्कृति','कक्षा','मित्र','प्रार्थना','औषधि'];
@@ -13,6 +15,17 @@ assert.ok(decomposeWord('चाँद').some(x=>x.char==='ँ'),'recognizes chan
 assert.ok(decomposeWord('हः').some(x=>x.manner==='breath'),'recognizes visarga');
 assert.ok(decomposeWord('पानी').some(x=>x.matra&&x.char==='ा'),'separates dependent vowel signs for coaching');
 console.log(`Passed ${samples.length} Hindi word decomposition cases and transliteration/modifier checks.`);
+
+const exerciseIds=['breathing','yawn','nose-pinch','vowels','chains','liptrill','straw','siren','messa','humming','reading','relax'];
+for(const id of exerciseIds)for(const view of ['side','front']){
+ const gif=join('assets','exercises',`${id}-${view}.gif`),poster=join('assets','exercises','posters',`${id}-${view}.png`);
+ const gifBytes=readFileSync(gif),posterBytes=readFileSync(poster);
+ assert.equal(gifBytes.subarray(0,6).toString(),'GIF89a',`${id} ${view} animation is a GIF`);
+ assert.ok(gifBytes.includes(Buffer.from('NETSCAPE2.0')),`${id} ${view} animation loops`);
+ assert.ok(statSync(gif).size>10_000,`${id} ${view} animation is not a blank placeholder`);
+ assert.deepEqual([...posterBytes.subarray(0,8)],[137,80,78,71,13,10,26,10],`${id} ${view} reduced-motion poster is PNG`);
+}
+console.log('Passed animated GIF loop and reduced-motion poster checks for all 12 exercises in both views.');
 
 globalThis.matchMedia=()=>({matches:false});
 const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};

@@ -9,7 +9,7 @@ Open the repository in a Codespace. The checked-in `.devcontainer` configuration
 ## What’s included
 
 - Hindi Devanagari phoneme reference data, matra/modifier decomposition, conjunct handling, and lightweight Hinglish transliteration.
-- Paired human side/front anatomy profiles with a broad, animated SVG tongue, articulator targets, oral/nasal airflow, and deterministic 30-second exercise sequences.
+- Paired human side/front anatomy profiles for Hindi sound exploration, plus distinct pre-rendered 30-second looping GIF animations for all 12 guided voice exercises. Switch between side, front, or both views; still posters are used when reduced motion is enabled.
 - Warm ivory/forest/brass light theme and near-black Moon-glow theme, floating bottom tabs, responsive layouts, adjustable text, and reduced-motion support.
 - Optional in-browser microphone meter for approximate pitch and spectral feedback. Audio is not recorded or uploaded.
 - Guided breathing, yawn–sigh, humming, siren, straw-style, vowel, reading, and relaxation practices.
